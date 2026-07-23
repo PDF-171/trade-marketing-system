@@ -508,8 +508,8 @@ const App = {
             ${u.OnDashboard === "FALSE" ? '<span class="tag muted small">Hidden from dashboard</span>' : ""}
           </div>
           <div class="row-actions"><span class="tag">${u.Role}</span>
-            <button class="icon-btn" onclick="App.openTeamEditForm(${u._row})" title="Edit"><i class="ti ti-pencil"></i></button>
-            <button class="icon-btn" onclick="App.deleteRow('Users', ${u._row})"><i class="ti ti-trash"></i></button></div>
+            <button class="icon-btn" onclick="App.openTeamEditForm(${u._row})" title="Edit">✏️</button>
+            <button class="icon-btn" onclick="App.deleteRow('Users', ${u._row})" title="Delete">🗑️</button>
         </div>`).join("")}</div>
       <div id="modal-root"></div>`;
   },
