@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Trade Marketing Team System</title>
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#1B2430" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/2.44.0/iconfont/tabler-icons.min.css" />
+<link rel="stylesheet" href="style.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<div id="login-screen" class="login-screen">
+  <div class="login-card">
+    <p class="eyebrow">Trade Marketing</p>
+    <h1>Team System</h1>
+    <p>Sign in with your Google account to continue.</p>
+    <button id="signin-btn" class="primary-btn full"><i class="ti ti-brand-google"></i> Sign in with Google</button>
+  </div>
+</div>
+
+<div id="app-shell" class="app-shell hidden">
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <p class="eyebrow">Trade Marketing</p>
+      <p class="brand">Team System</p>
+    </div>
+    <nav class="nav">
+      <button class="nav-btn" data-view="dashboard" onclick="App.go('dashboard')"><i class="ti ti-layout-dashboard"></i> Dashboard</button>
+      <button class="nav-btn" data-view="tasks" onclick="App.go('tasks')"><i class="ti ti-list-check"></i> Tasks</button>
+      <button class="nav-btn" data-view="calendar" onclick="App.go('calendar')"><i class="ti ti-calendar"></i> Calendar</button>
+      <button class="nav-btn" data-view="reports" onclick="App.go('reports')"><i class="ti ti-file-text"></i> Daily reports</button>
+      <button class="nav-btn" data-view="gallery" onclick="App.go('gallery')"><i class="ti ti-photo"></i> Gallery</button>
+      <button class="nav-btn" data-view="brand" onclick="App.go('brand')"><i class="ti ti-books"></i> Brand library</button>
+      <button class="nav-btn" data-view="team" onclick="App.go('team')"><i class="ti ti-users"></i> Team</button>
+    </nav>
+    <div class="sidebar-footer">
+      <p class="small muted">Signed in as</p>
+      <p id="current-user-email" class="small"></p>
+      <button class="text-btn" onclick="Auth.signOut()">Sign out</button>
+    </div>
+  </aside>
+  <main id="main" class="main"></main>
+</div>
+
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="config.js"></script>
+<script src="auth.js"></script>
+<script src="sheets.js"></script>
+<script src="app.js"></script>
+<script>
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(console.error));
+}
+</script>
+</body>
+</html>
