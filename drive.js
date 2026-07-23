@@ -30,7 +30,10 @@ const DriveAPI = {
       headers: { Authorization: `Bearer ${token}`, "Content-Type": `multipart/related; boundary=${boundary}` },
       body,
     });
-    if (!uploadRes.ok) throw new Error(`Drive upload failed: ${uploadRes.status}`);
+    if (!uploadRes.ok) {
+      const errText = await uploadRes.text().catch(() => "");
+      throw new Error(`Drive upload failed (${uploadRes.status}): ${errText}`);
+    }
     const uploaded = await uploadRes.json();
 
     // Make it viewable by anyone with the link, so it can be shown in <img> tags.
@@ -39,7 +42,10 @@ const DriveAPI = {
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({ role: "reader", type: "anyone" }),
     });
-    if (!permRes.ok) throw new Error(`Couldn't set sharing permission: ${permRes.status}`);
+    if (!permRes.ok) {
+      const errText = await permRes.text().catch(() => "");
+      throw new Error(`Couldn't set sharing permission (${permRes.status}): ${errText}`);
+    }
 
     return { id: uploaded.id, url: `https://drive.google.com/thumbnail?id=${uploaded.id}&sz=w1000` };
   },
