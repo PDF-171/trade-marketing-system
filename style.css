@@ -49,7 +49,7 @@ h1, h2, h3 { font-family: "Oswald", sans-serif; font-weight: 600; letter-spacing
 .dash-date { text-align: center; color: #E8722C; font-size: 26px; margin: 6px 0 18px; }
 
 .stack { display: flex; flex-direction: column; gap: 8px; }
-.row-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.row-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; }
 .row-card.block { display: block; }
 .row-title { font-weight: 600; margin: 0 0 2px; }
 .row-actions { display: flex; align-items: center; gap: 10px; }
