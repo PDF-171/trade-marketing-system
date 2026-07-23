@@ -84,32 +84,64 @@ const App = {
   todayISO() { return new Date().toISOString().slice(0, 10); },
   uid() { return Math.random().toString(36).slice(2, 10); },
 
+  // Shared helper: build colored columns per user, optionally filtered to a subset
+  // and to specific tasks. Used by both Dashboard (filtered) and Tasks (all).
+  buildBoardColumns(users, tasks, { onlyOnDashboard = false, openOnly = false } = {}) {
+    const eligible = onlyOnDashboard ? users.filter(u => u.OnDashboard !== "FALSE") : users;
+    const columns = eligible.map((u, i) => {
+      const body = u.Color && /^#[0-9A-Fa-f]{6}$/.test(u.Color) ? u.Color : this.boardPalette[i % this.boardPalette.length].body;
+      let colTasks = tasks.filter(t => t.Assignee === u.Name);
+      if (openOnly) colTasks = colTasks.filter(t => t.Status !== "Done");
+      return { name: u.Name, header: darken(body, 40), body, tasks: colTasks };
+    });
+    if (!onlyOnDashboard) {
+      const unassigned = tasks.filter(t => !users.some(u => u.Name === t.Assignee));
+      if (unassigned.length) columns.push({ name: "Unassigned", header: "#8a8879", body: "#c9c7bb", tasks: unassigned });
+    }
+    return columns;
+  },
+
+  dueBadge(t) {
+    if (!t.DueDate) return "";
+    const overdue = t.DueDate < this.todayISO() && t.Status !== "Done";
+    return `<span class="due-badge" style="background:${overdue ? OVERDUE_COLOR : DUE_SOON_COLOR}">${t.DueDate}</span>`;
+  },
+
+  renderBoard(columns, { emptyMessage = "No tasks" } = {}) {
+    return `<div class="board">
+      ${columns.map(col => `
+        <div class="board-col">
+          <div class="board-col-header" style="background:${col.header}">${col.name}</div>
+          <div class="board-col-body" style="background:${col.body}">
+            ${col.tasks.length ? `<ul class="board-list">
+              ${col.tasks.map(t => `<li class="${t.Status === "Done" ? "done" : ""}" onclick="App.openTaskDetail(${t._row})">${t.Title} ${this.dueBadge(t)}</li>`).join("")}
+            </ul>` : `<p class="board-empty">${emptyMessage}</p>`}
+          </div>
+        </div>`).join("")}
+    </div>`;
+  },
+
   // ---------------- Dashboard ----------------
   async render_dashboard() {
-    const [{ rows: tasks }, { rows: events }, { rows: reports }] = await Promise.all([
-      this.load("Tasks"), this.load("Events"), this.load("Reports"),
+    const [{ rows: tasks }, { rows: events }, { rows: reports }, { rows: users }] = await Promise.all([
+      this.load("Tasks"), this.load("Events"), this.load("Reports"), this.load("Users"),
     ]);
     const me = this.currentUser.Name;
-    const myOpen = tasks.filter(t => t.Assignee === me && t.Status !== "Done");
     const today = this.todayISO();
-    const todayEvents = events.filter(e => e.Date === today);
     const upcoming = events.filter(e => e.Date >= today).sort((a, b) => a.Date.localeCompare(b.Date)).slice(0, 5);
     const reportedToday = reports.some(r => r.Author === me && r.Date === today);
+    const dateLabel = new Date(today + "T00:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+
+    const columns = this.buildBoardColumns(users, tasks, { onlyOnDashboard: true, openOnly: true });
 
     return `
       <h2 class="section-title"><i class="ti ti-layout-dashboard"></i> Dashboard</h2>
       <p class="section-sub">Welcome back, ${me}.</p>
       ${!reportedToday ? `<div class="banner"><i class="ti ti-alert-triangle"></i> You haven't submitted today's daily report yet.
         <button class="link-btn" onclick="App.go('reports')">Submit now</button></div>` : ""}
-      <div class="card-grid">
-        <div class="card"><div class="card-label">My open tasks</div><div class="card-big">${myOpen.length}</div></div>
-        <div class="card"><div class="card-label">Today's calendar</div>
-          ${todayEvents.length === 0 ? `<p class="muted">Nothing scheduled today</p>` :
-            todayEvents.map(e => `<div class="tag tag-${e.Type}">${e.Type}</div> ${e.Title}<br/>`).join("")}
-        </div>
-        <div class="card"><div class="card-label">Team tasks in progress</div><div class="card-big">${tasks.filter(t => t.Status === "In progress").length}</div></div>
-      </div>
-      <div class="card" style="margin-top:16px">
+      <h1 class="dash-date">${dateLabel}</h1>
+      ${columns.length === 0 ? `<div class="empty">No one is set to show on the Dashboard yet — toggle it on in Team.</div>` : this.renderBoard(columns, { emptyMessage: "No open tasks" })}
+      <div class="card" style="margin-top:20px">
         <div class="card-label">Upcoming events</div>
         ${upcoming.length === 0 ? `<p class="muted">No upcoming events</p>` :
           `<ul class="plain-list">${upcoming.map(e => `<li><span class="tag tag-${e.Type}">${e.Type}</span> ${e.Title} <span class="muted">${e.Date}</span></li>`).join("")}</ul>`}
@@ -124,37 +156,12 @@ const App = {
     const { rows } = await this.load("Tasks");
     const { rows: users } = await this.load("Users");
     this._taskUsers = users;
-    const today = this.todayISO();
-
-    const columns = users.map((u, i) => {
-      const body = u.Color && /^#[0-9A-Fa-f]{6}$/.test(u.Color) ? u.Color : this.boardPalette[i % this.boardPalette.length].body;
-      return { name: u.Name, header: darken(body, 40), body, tasks: rows.filter(t => t.Assignee === u.Name) };
-    });
-    const unassigned = rows.filter(t => !users.some(u => u.Name === t.Assignee));
-    if (unassigned.length) {
-      columns.push({ name: "Unassigned", header: "#8a8879", body: "#c9c7bb", tasks: unassigned });
-    }
-
-    const dueBadge = (t) => {
-      if (!t.DueDate) return "";
-      const overdue = t.DueDate < today && t.Status !== "Done";
-      return `<span class="due-badge" style="background:${overdue ? OVERDUE_COLOR : DUE_SOON_COLOR}">${t.DueDate}</span>`;
-    };
+    const columns = this.buildBoardColumns(users, rows);
 
     return `
       <h2 class="section-title"><i class="ti ti-list-check"></i> Tasks</h2>
       <button class="primary-btn" onclick="App.openTaskForm()"><i class="ti ti-plus"></i> New task</button>
-      <div class="board">
-        ${columns.map(col => `
-          <div class="board-col">
-            <div class="board-col-header" style="background:${col.header}">${col.name}</div>
-            <div class="board-col-body" style="background:${col.body}">
-              ${col.tasks.length ? `<ul class="board-list">
-                ${col.tasks.map(t => `<li class="${t.Status === "Done" ? "done" : ""}" onclick="App.openTaskDetail(${t._row})">${t.Title} ${dueBadge(t)}</li>`).join("")}
-              </ul>` : `<p class="board-empty">No tasks</p>`}
-            </div>
-          </div>`).join("")}
-      </div>
+      ${this.renderBoard(columns)}
       <div id="modal-root"></div>`;
   },
   wire_tasks() {},
@@ -454,7 +461,7 @@ const App = {
       await this.go("gallery");
     } catch (e) {
       console.error(e);
-      alert("Upload failed. Check your connection and try again.");
+      alert("Upload failed:\n\n" + e.message);
       btn.disabled = false;
       btn.textContent = "Add to gallery";
     }
@@ -498,9 +505,10 @@ const App = {
           <div class="row-actions">
             <span class="color-dot" style="background:${u.Color || "#c9c7bb"}"></span>
             ${u.Name} ${u.Email === this.currentUser.Email ? '<span class="tag">You</span>' : ""}
+            ${u.OnDashboard === "FALSE" ? '<span class="tag muted small">Hidden from dashboard</span>' : ""}
           </div>
           <div class="row-actions"><span class="tag">${u.Role}</span>
-            <button class="icon-btn" onclick="App.openColorPicker(${u._row}, '${(u.Color || "").replace(/'/g, "")}')" title="Change color"><i class="ti ti-palette"></i></button>
+            <button class="icon-btn" onclick="App.openTeamEditForm(${u._row})" title="Edit"><i class="ti ti-pencil"></i></button>
             <button class="icon-btn" onclick="App.deleteRow('Users', ${u._row})"><i class="ti ti-trash"></i></button></div>
         </div>`).join("")}</div>
       <div id="modal-root"></div>`;
@@ -522,6 +530,7 @@ const App = {
           <label>Name<input id="f-name" /></label>
           <label>Role<select id="f-role">${ROLES.map(r => `<option>${r}</option>`).join("")}</select></label>
           <label>Board color (pastel only)${this.swatchPicker(PASTEL_SWATCHES[0], "f-color")}</label>
+          <label><input type="checkbox" id="f-ondash" checked style="width:auto;display:inline-block;margin-right:6px" /> Show on Dashboard</label>
           <button class="primary-btn full" onclick="App.submitTeam()">Add member</button>
         </div>
       </div>`;
@@ -532,6 +541,7 @@ const App = {
       Name: document.getElementById("f-name").value.trim(),
       Role: document.getElementById("f-role").value,
       Color: document.getElementById("f-color").value,
+      OnDashboard: document.getElementById("f-ondash").checked ? "TRUE" : "FALSE",
     };
     if (!fields.Email || !fields.Name) return;
     const { headers } = await this.load("Users");
@@ -540,20 +550,30 @@ const App = {
     alert("Added. Remember: they also need to be added as a Test user in Google Auth Platform → Audience, and shared on the Google Sheet, before they can sign in.");
     await this.go("team");
   },
-  openColorPicker(rowNumber, currentColor) {
+  async openTeamEditForm(rowNumber) {
+    const { rows } = await this.load("Users");
+    const u = rows.find(r => r._row === rowNumber);
     document.getElementById("modal-root").innerHTML = `
       <div class="modal-overlay" onclick="if(event.target===this)this.remove()">
         <div class="modal">
-          <h3>Choose a board color</h3>
-          ${this.swatchPicker(currentColor, "f-color-edit")}
-          <button class="primary-btn full" style="margin-top:14px" onclick="App.saveColor(${rowNumber})">Save color</button>
+          <h3>Edit team member</h3>
+          <label>Google email<input id="f-email" value="${u.Email}" /></label>
+          <label>Name<input id="f-name" value="${u.Name}" /></label>
+          <label>Role<select id="f-role">${ROLES.map(r => `<option ${r === u.Role ? "selected" : ""}>${r}</option>`).join("")}</select></label>
+          <label>Board color (pastel only)${this.swatchPicker(u.Color, "f-color-edit")}</label>
+          <label><input type="checkbox" id="f-ondash-edit" ${u.OnDashboard !== "FALSE" ? "checked" : ""} style="width:auto;display:inline-block;margin-right:6px" /> Show on Dashboard</label>
+          <button class="primary-btn full" onclick="App.saveTeamEdit(${rowNumber})">Save changes</button>
         </div>
       </div>`;
   },
-  async saveColor(rowNumber) {
+  async saveTeamEdit(rowNumber) {
     const { headers, rows } = await this.load("Users");
     const row = rows.find(r => r._row === rowNumber);
+    row.Email = document.getElementById("f-email").value.trim();
+    row.Name = document.getElementById("f-name").value.trim();
+    row.Role = document.getElementById("f-role").value;
     row.Color = document.getElementById("f-color-edit").value;
+    row.OnDashboard = document.getElementById("f-ondash-edit").checked ? "TRUE" : "FALSE";
     await SheetsAPI.update("Users", headers, rowNumber, row);
     document.getElementById("modal-root").innerHTML = "";
     await this.go("team");
