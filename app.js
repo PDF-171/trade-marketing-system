@@ -510,6 +510,7 @@ const App = {
           <div class="row-actions"><span class="tag">${u.Role}</span>
             <button class="icon-btn" onclick="App.openTeamEditForm(${u._row})" title="Edit">✏️</button>
             <button class="icon-btn" onclick="App.deleteRow('Users', ${u._row})" title="Delete">🗑️</button>
+          </div>
         </div>`).join("")}</div>
       <div id="modal-root"></div>`;
   },
