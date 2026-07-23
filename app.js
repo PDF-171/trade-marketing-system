@@ -180,30 +180,95 @@ const App = {
   },
 
   // ---------------- Calendar ----------------
+  calMonth: null, // { y, m } — m is 0-indexed
+  selectedDay: null,
+
   async render_calendar() {
     const { rows } = await this.load("Events");
-    const sorted = [...rows].sort((a, b) => a.Date.localeCompare(b.Date));
+    const today = new Date();
+    if (!this.calMonth) this.calMonth = { y: today.getFullYear(), m: today.getMonth() };
+    if (!this.selectedDay) this.selectedDay = this.todayISO();
+
+    const { y, m } = this.calMonth;
+    const monthName = new Date(y, m, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+    const firstWeekday = new Date(y, m, 1).getDay();
+    const daysInMonth = new Date(y, m + 1, 0).getDate();
+    const todayStr = this.todayISO();
+
+    // date -> array of event types present that day
+    const byDate = {};
+    rows.forEach(e => {
+      if (!e.Date) return;
+      (byDate[e.Date] ||= []).push(e.Type || "Event");
+    });
+
+    let cells = "";
+    for (let i = 0; i < firstWeekday; i++) cells += `<div class="cal-cell empty-cell"></div>`;
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateStr = `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+      const types = [...new Set(byDate[dateStr] || [])];
+      const isToday = dateStr === todayStr;
+      const isSelected = dateStr === this.selectedDay;
+      cells += `
+        <div class="cal-cell${isToday ? " is-today" : ""}${isSelected ? " is-selected" : ""}" onclick="App.selectDay('${dateStr}')">
+          <span class="cal-daynum">${d}</span>
+          <div class="cal-dots">${types.slice(0, 4).map(t => `<span class="cal-dot dot-${t}"></span>`).join("")}</div>
+        </div>`;
+    }
+
+    const dayEvents = rows.filter(e => e.Date === this.selectedDay).sort((a, b) => (a.Title || "").localeCompare(b.Title || ""));
+    const selectedLabel = new Date(this.selectedDay + "T00:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+
     return `
       <h2 class="section-title"><i class="ti ti-calendar"></i> Calendar</h2>
-      <button class="primary-btn" onclick="App.openEventForm()"><i class="ti ti-plus"></i> New entry</button>
-      <div class="stack">${sorted.length ? sorted.map(e => `
-        <div class="row-card">
-          <div><span class="tag tag-${e.Type}">${e.Type}</span> <span class="row-title">${e.Title}</span>
-          ${e.Location ? `<p class="muted small"><i class="ti ti-map-pin"></i> ${e.Location}</p>` : ""}</div>
-          <div class="row-actions"><span class="muted">${e.Date}</span>
-            <button class="icon-btn" onclick="App.deleteRow('Events', ${e._row})"><i class="ti ti-trash"></i></button></div>
-        </div>`).join("") : `<div class="empty">No calendar entries yet.</div>`}</div>
+      <div class="cal-header">
+        <button class="icon-btn" onclick="App.calNav(-1)"><i class="ti ti-chevron-left"></i></button>
+        <strong>${monthName}</strong>
+        <button class="icon-btn" onclick="App.calNav(1)"><i class="ti ti-chevron-right"></i></button>
+        <button class="primary-btn" style="margin-left:auto" onclick="App.openEventForm()"><i class="ti ti-plus"></i> New entry</button>
+      </div>
+      <div class="cal-legend">${EVENT_TYPES.map(t => `<span class="legend-item"><span class="cal-dot dot-${t}"></span> ${t}</span>`).join("")}</div>
+      <div class="cal-grid">
+        ${["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d => `<div class="cal-weekday">${d}</div>`).join("")}
+        ${cells}
+      </div>
+      <div class="card" style="margin-top:16px">
+        <div class="row-actions" style="justify-content:space-between">
+          <strong>${selectedLabel}</strong>
+          <button class="text-btn" onclick="App.openEventForm('${this.selectedDay}')">+ Add entry for this day</button>
+        </div>
+        <div class="stack" style="margin-top:10px">
+          ${dayEvents.length ? dayEvents.map(e => `
+            <div class="row-card">
+              <div><span class="tag tag-${e.Type}">${e.Type}</span> <span class="row-title">${e.Title}</span>
+              ${e.Location ? `<p class="muted small"><i class="ti ti-map-pin"></i> ${e.Location}</p>` : ""}</div>
+              <button class="icon-btn" onclick="App.deleteRow('Events', ${e._row})"><i class="ti ti-trash"></i></button>
+            </div>`).join("") : `<p class="muted small">Nothing on this day.</p>`}
+        </div>
+      </div>
       <div id="modal-root"></div>`;
   },
   wire_calendar() {},
-  openEventForm() {
+  calNav(delta) {
+    let { y, m } = this.calMonth;
+    m += delta;
+    if (m < 0) { m = 11; y -= 1; }
+    if (m > 11) { m = 0; y += 1; }
+    this.calMonth = { y, m };
+    this.go("calendar");
+  },
+  selectDay(dateStr) {
+    this.selectedDay = dateStr;
+    this.go("calendar");
+  },
+  openEventForm(prefillDate) {
     document.getElementById("modal-root").innerHTML = `
       <div class="modal-overlay" onclick="if(event.target===this)this.remove()">
         <div class="modal">
           <h3>New calendar entry</h3>
           <label>Title<input id="f-title" /></label>
           <label>Type<select id="f-type">${EVENT_TYPES.map(t => `<option>${t}</option>`).join("")}</select></label>
-          <label>Date<input type="date" id="f-date" value="${this.todayISO()}" /></label>
+          <label>Date<input type="date" id="f-date" value="${prefillDate || this.selectedDay || this.todayISO()}" /></label>
           <label>Location (optional)<input id="f-loc" /></label>
           <button class="primary-btn full" onclick="App.submitEvent()">Add to calendar</button>
         </div>
@@ -221,6 +286,7 @@ const App = {
     const { headers } = await this.load("Events");
     await SheetsAPI.append("Events", headers, fields);
     document.getElementById("modal-root").innerHTML = "";
+    this.selectedDay = fields.Date;
     await this.go("calendar");
   },
 
