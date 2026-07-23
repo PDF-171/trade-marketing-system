@@ -2,7 +2,17 @@ const STATUSES = ["Not started", "In progress", "For approval", "Done"];
 const EVENT_TYPES = ["Event", "Installation", "Meeting", "Deadline"];
 const GALLERY_CATS = ["Booth setup", "Signage", "Crowd", "Team", "Issue"];
 const ROLES = ["Admin", "Coordinator", "Field staff", "Designer"];
-const BRANDS = ["Michelin", "BFGoodrich", "Linglong", "Arivo", "Hankook", "Apollo", "Others"];
+const PASTEL_SWATCHES = ["#F7C6C7", "#FBE7A1", "#B5EAD7", "#C7CEEA", "#FFDAC1", "#E2F0CB", "#D6C9F2", "#F6DFEB"];
+const DUE_SOON_COLOR = "#C7CEEA"; // upcoming due date — soft periwinkle
+const OVERDUE_COLOR = "#F7C6C7"; // overdue due date — soft coral
+
+function darken(hex, amount) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = Math.max(0, (n >> 16) - amount);
+  const g = Math.max(0, ((n >> 8) & 0xff) - amount);
+  const b = Math.max(0, (n & 0xff) - amount);
+  return `rgb(${r},${g},${b})`;
+}
 
 const App = {
   currentUser: null, // { Email, Name, Role }
@@ -108,32 +118,44 @@ const App = {
   wire_dashboard() {},
 
   // ---------------- Tasks ----------------
+  boardPalette: PASTEL_SWATCHES.map(c => ({ header: darken(c, 40), body: c })),
+
   async render_tasks() {
     const { rows } = await this.load("Tasks");
     const { rows: users } = await this.load("Users");
     this._taskUsers = users;
+    const today = this.todayISO();
+
+    const columns = users.map((u, i) => {
+      const body = u.Color && /^#[0-9A-Fa-f]{6}$/.test(u.Color) ? u.Color : this.boardPalette[i % this.boardPalette.length].body;
+      return { name: u.Name, header: darken(body, 40), body, tasks: rows.filter(t => t.Assignee === u.Name) };
+    });
+    const unassigned = rows.filter(t => !users.some(u => u.Name === t.Assignee));
+    if (unassigned.length) {
+      columns.push({ name: "Unassigned", header: "#8a8879", body: "#c9c7bb", tasks: unassigned });
+    }
+
+    const dueBadge = (t) => {
+      if (!t.DueDate) return "";
+      const overdue = t.DueDate < today && t.Status !== "Done";
+      return `<span class="due-badge" style="background:${overdue ? OVERDUE_COLOR : DUE_SOON_COLOR}">${t.DueDate}</span>`;
+    };
+
     return `
       <h2 class="section-title"><i class="ti ti-list-check"></i> Tasks</h2>
       <button class="primary-btn" onclick="App.openTaskForm()"><i class="ti ti-plus"></i> New task</button>
-      <div id="task-list" class="stack">${this.taskRows(rows)}</div>
+      <div class="board">
+        ${columns.map(col => `
+          <div class="board-col">
+            <div class="board-col-header" style="background:${col.header}">${col.name}</div>
+            <div class="board-col-body" style="background:${col.body}">
+              ${col.tasks.length ? `<ul class="board-list">
+                ${col.tasks.map(t => `<li class="${t.Status === "Done" ? "done" : ""}" onclick="App.openTaskDetail(${t._row})">${t.Title} ${dueBadge(t)}</li>`).join("")}
+              </ul>` : `<p class="board-empty">No tasks</p>`}
+            </div>
+          </div>`).join("")}
+      </div>
       <div id="modal-root"></div>`;
-  },
-  taskRows(rows) {
-    if (!rows.length) return `<div class="empty">No tasks yet.</div>`;
-    return rows.map(t => `
-      <div class="row-card">
-        <div>
-          <p class="row-title">${t.Title}</p>
-          ${t.Description ? `<p class="muted">${t.Description}</p>` : ""}
-          <p class="muted small">${t.Assignee || "Unassigned"} ${t.DueDate ? " · due " + t.DueDate : ""}</p>
-        </div>
-        <div class="row-actions">
-          <select onchange="App.updateTaskStatus(${t._row}, this.value)">
-            ${STATUSES.map(s => `<option ${s === t.Status ? "selected" : ""}>${s}</option>`).join("")}
-          </select>
-          <button class="icon-btn" onclick="App.deleteRow('Tasks', ${t._row})"><i class="ti ti-trash"></i></button>
-        </div>
-      </div>`).join("");
   },
   wire_tasks() {},
   openTaskForm() {
@@ -166,11 +188,34 @@ const App = {
     document.getElementById("modal-root").innerHTML = "";
     await this.go("tasks");
   },
-  async updateTaskStatus(rowNumber, status) {
+  async openTaskDetail(rowNumber) {
+    const { rows } = await this.load("Tasks");
+    const t = rows.find(r => r._row === rowNumber);
+    document.getElementById("modal-root").innerHTML = `
+      <div class="modal-overlay" onclick="if(event.target===this)this.remove()">
+        <div class="modal">
+          <h3>${t.Title}</h3>
+          <label>Title<input id="f-title" value="${t.Title}" /></label>
+          <label>Description<textarea id="f-desc">${t.Description || ""}</textarea></label>
+          <label>Assignee<select id="f-assignee">${this._taskUsers.map(u => `<option ${u.Name === t.Assignee ? "selected" : ""}>${u.Name}</option>`).join("")}</select></label>
+          <label>Status<select id="f-status">${STATUSES.map(s => `<option ${s === t.Status ? "selected" : ""}>${s}</option>`).join("")}</select></label>
+          <label>Due date<input type="date" id="f-due" value="${t.DueDate || ""}" /></label>
+          <button class="primary-btn full" onclick="App.submitTaskEdit(${rowNumber})">Save changes</button>
+          <button class="secondary-btn full" style="margin-top:8px" onclick="App.deleteRow('Tasks', ${rowNumber})">Delete task</button>
+        </div>
+      </div>`;
+  },
+  async submitTaskEdit(rowNumber) {
     const { headers, rows } = await this.load("Tasks");
     const row = rows.find(r => r._row === rowNumber);
-    row.Status = status;
+    row.Title = document.getElementById("f-title").value;
+    row.Description = document.getElementById("f-desc").value;
+    row.Assignee = document.getElementById("f-assignee").value;
+    row.Status = document.getElementById("f-status").value;
+    row.DueDate = document.getElementById("f-due").value;
     await SheetsAPI.update("Tasks", headers, rowNumber, row);
+    document.getElementById("modal-root").innerHTML = "";
+    await this.go("tasks");
   },
   async deleteRow(tab, rowNumber) {
     if (!confirm("Remove this entry?")) return;
@@ -368,109 +413,64 @@ const App = {
       <div class="modal-overlay" onclick="if(event.target===this)this.remove()">
         <div class="modal">
           <h3>Add photo</h3>
-          <label>Image URL (e.g. a Google Drive share link)<input id="f-url" /></label>
+          <label>Photo (choose from your device or take one)
+            <input type="file" id="f-file" accept="image/*" />
+          </label>
+          <img id="f-preview" style="display:none;width:100%;max-height:160px;object-fit:cover;margin-top:6px" />
           <label>Caption<input id="f-cap" /></label>
           <label>Category<select id="f-cat">${GALLERY_CATS.map(c => `<option>${c}</option>`).join("")}</select></label>
           <label>Related event (optional)<input id="f-event" /></label>
-          <button class="primary-btn full" onclick="App.submitGallery()">Add to gallery</button>
+          <button class="primary-btn full" id="f-submit-btn" onclick="App.submitGallery()">Add to gallery</button>
         </div>
       </div>`;
+    document.getElementById("f-file").addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      const preview = document.getElementById("f-preview");
+      if (file) {
+        preview.src = URL.createObjectURL(file);
+        preview.style.display = "block";
+      }
+    });
   },
   async submitGallery() {
-    const fields = {
-      ID: this.uid(),
-      URL: document.getElementById("f-url").value,
-      Caption: document.getElementById("f-cap").value,
-      Category: document.getElementById("f-cat").value,
-      Event: document.getElementById("f-event").value,
-      UploadedBy: this.currentUser.Name,
-    };
-    if (!fields.URL.trim()) return;
-    const { headers } = await this.load("Gallery");
-    await SheetsAPI.append("Gallery", headers, fields);
-    document.getElementById("modal-root").innerHTML = "";
-    await this.go("gallery");
+    const file = document.getElementById("f-file").files[0];
+    if (!file) { alert("Choose a photo first."); return; }
+    const btn = document.getElementById("f-submit-btn");
+    btn.disabled = true;
+    btn.textContent = "Uploading…";
+    try {
+      const { url } = await DriveAPI.uploadImage(file);
+      const fields = {
+        ID: this.uid(),
+        URL: url,
+        Caption: document.getElementById("f-cap").value,
+        Category: document.getElementById("f-cat").value,
+        Event: document.getElementById("f-event").value,
+        UploadedBy: this.currentUser.Name,
+      };
+      const { headers } = await this.load("Gallery");
+      await SheetsAPI.append("Gallery", headers, fields);
+      document.getElementById("modal-root").innerHTML = "";
+      await this.go("gallery");
+    } catch (e) {
+      console.error(e);
+      alert("Upload failed. Check your connection and try again.");
+      btn.disabled = false;
+      btn.textContent = "Add to gallery";
+    }
   },
 
-  // ---------------- Brand Library ----------------
-  async render_brand() {
-    const { rows } = await this.load("Brands");
+  // ---------------- History (read-only activity log) ----------------
+  async render_history() {
+    const { rows } = await this.load("Reports");
+    const byDate = {};
+    rows.forEach(r => { (byDate[r.Date] ||= []).push(r); });
+    const dates = Object.keys(byDate).sort((a, b) => b.localeCompare(a));
+
     return `
-      <h2 class="section-title"><i class="ti ti-books"></i> Brand library</h2>
-      <p class="section-sub">Links out to your Drive folders per brand.</p>
-      <div class="brand-grid">${BRANDS.map(b => `
-        <div class="card">
-          <div class="row-actions" style="justify-content:space-between">
-            <strong>${b}</strong>
-            <button class="icon-btn" onclick="App.openBrandForm('${b}')"><i class="ti ti-plus"></i></button>
-          </div>
-          <ul class="plain-list">${rows.filter(r => r.Brand === b).map(r => `
-            <li><a href="${r.URL}" target="_blank" rel="noreferrer">${r.Label}</a>
-              <button class="icon-btn" onclick="App.deleteRow('Brands', ${r._row})"><i class="ti ti-trash"></i></button></li>`).join("") || `<li class="muted small">No assets linked yet.</li>`}</ul>
-        </div>`).join("")}</div>
-      <div id="modal-root"></div>`;
-  },
-  wire_brand() {},
-  openBrandForm(brand) {
-    document.getElementById("modal-root").innerHTML = `
-      <div class="modal-overlay" onclick="if(event.target===this)this.remove()">
-        <div class="modal">
-          <h3>Add asset link — ${brand}</h3>
-          <label>Label<input id="f-label" placeholder="e.g. Logo pack (2026)" /></label>
-          <label>Drive / Dropbox link<input id="f-url" /></label>
-          <button class="primary-btn full" onclick="App.submitBrand('${brand}')">Add asset</button>
-        </div>
-      </div>`;
-  },
-  async submitBrand(brand) {
-    const fields = { Brand: brand, Label: document.getElementById("f-label").value, URL: document.getElementById("f-url").value };
-    if (!fields.Label.trim() || !fields.URL.trim()) return;
-    const { headers } = await this.load("Brands");
-    await SheetsAPI.append("Brands", headers, fields);
-    document.getElementById("modal-root").innerHTML = "";
-    await this.go("brand");
-  },
-
-  // ---------------- Team ----------------
-  async render_team() {
-    const { rows } = await this.load("Users");
-    return `
-      <h2 class="section-title"><i class="ti ti-users"></i> Team</h2>
-      <button class="primary-btn" onclick="App.openTeamForm()"><i class="ti ti-plus"></i> Add member</button>
-      <div class="stack">${rows.map(u => `
-        <div class="row-card">
-          <div>${u.Name} ${u.Email === this.currentUser.Email ? '<span class="tag">You</span>' : ""}</div>
-          <div class="row-actions"><span class="tag">${u.Role}</span>
-            <button class="icon-btn" onclick="App.deleteRow('Users', ${u._row})"><i class="ti ti-trash"></i></button></div>
-        </div>`).join("")}</div>
-      <div id="modal-root"></div>`;
-  },
-  wire_team() {},
-  openTeamForm() {
-    document.getElementById("modal-root").innerHTML = `
-      <div class="modal-overlay" onclick="if(event.target===this)this.remove()">
-        <div class="modal">
-          <h3>Add team member</h3>
-          <label>Google email (must match their login)<input id="f-email" /></label>
-          <label>Name<input id="f-name" /></label>
-          <label>Role<select id="f-role">${ROLES.map(r => `<option>${r}</option>`).join("")}</select></label>
-          <button class="primary-btn full" onclick="App.submitTeam()">Add member</button>
-        </div>
-      </div>`;
-  },
-  async submitTeam() {
-    const fields = {
-      Email: document.getElementById("f-email").value.trim(),
-      Name: document.getElementById("f-name").value.trim(),
-      Role: document.getElementById("f-role").value,
-    };
-    if (!fields.Email || !fields.Name) return;
-    const { headers } = await this.load("Users");
-    await SheetsAPI.append("Users", headers, fields);
-    document.getElementById("modal-root").innerHTML = "";
-    alert("Added. Remember: they also need to be added as a Test user in Google Auth Platform → Audience before they can sign in.");
-    await this.go("team");
-  },
-};
-
-document.addEventListener("DOMContentLoaded", () => App.start());
+      <h2 class="section-title"><i class="ti ti-history"></i> History</h2>
+      <p class="section-sub">A read-only record of what the team has done, day by day — pulled from Daily Reports.</p>
+      ${dates.length === 0 ? `<div class="empty">Nothing logged yet. History fills in as people submit daily reports.</div>` :
+        dates.map(date => `
+          <div class="history-day">
+            <h3 class="history-date">${new Date(date + "T00:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}</h3>
