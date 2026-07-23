@@ -15,6 +15,7 @@ h1, h2, h3 { font-family: "Oswald", sans-serif; font-weight: 600; letter-spacing
 .sidebar { width: 220px; background: #1B2430; color: #cbd0d8; display: flex; flex-direction: column; flex-shrink: 0; }
 .sidebar-header { padding: 20px 16px; border-bottom: 1px solid rgba(255,255,255,0.1); }
 .sidebar-header .brand { color: #fff; font-size: 18px; }
+.sidebar-logo { max-width: 100%; max-height: 40px; display: block; margin-bottom: 10px; }
 .nav { flex: 1; padding: 12px 0; }
 .nav-btn { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; background: none; border: none; color: #cbd0d8; padding: 10px 16px; font-size: 14px; cursor: pointer; border-right: 2px solid transparent; }
 .nav-btn:hover { background: rgba(255,255,255,0.05); }
@@ -79,6 +80,36 @@ h1, h2, h3 { font-family: "Oswald", sans-serif; font-weight: 600; letter-spacing
 .gallery-del { position: absolute; top: 4px; right: 4px; background: rgba(255,255,255,0.9); }
 
 .brand-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+
+/* Task board */
+.board { display: flex; gap: 16px; margin-top: 16px; overflow-x: auto; padding-bottom: 8px; align-items: flex-start; }
+.board-col { flex: 0 0 200px; min-width: 200px; }
+.board-col-header { color: #fff; font-family: "Oswald", sans-serif; font-weight: 600; font-size: 18px; text-align: center; padding: 14px 8px; }
+.board-col-body { min-height: 320px; padding: 14px 10px; }
+.board-list { list-style: none; margin: 0; padding: 0; }
+.board-list li { color: #33322d; font-size: 14px; font-weight: 500; padding: 6px 4px; cursor: pointer; border-radius: 3px; }
+.board-list li:hover { background: rgba(0,0,0,0.06); }
+.board-list li::before { content: "• "; }
+.board-list li.done { text-decoration: line-through; opacity: 0.6; }
+.board-empty { color: rgba(0,0,0,0.45); font-size: 13px; margin: 0; }
+.due-badge { display: inline-block; font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 8px; margin-left: 4px; color: #3a3a3a; }
+
+@media (max-width: 720px) {
+  .board-col { flex: 0 0 160px; min-width: 160px; }
+}
+
+/* Color picker */
+.swatch-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+.swatch { width: 26px; height: 26px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0; }
+.swatch.selected { border-color: #1B2430; box-shadow: 0 0 0 2px #fff inset; }
+.color-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+
+/* History */
+.history-day { margin-bottom: 22px; }
+.history-date { font-size: 15px; color: #1B2430; border-bottom: 1px solid #E2E0D6; padding-bottom: 6px; margin-bottom: 10px; }
+.row-card.readonly { cursor: default; }
+
+/* Gallery upload preview lives inside modal, reuse existing modal img rules */
 
 /* Calendar */
 .cal-header { display: flex; align-items: center; gap: 10px; margin: 12px 0; }
